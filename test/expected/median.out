@@ -1,0 +1,169 @@
+CREATE TABLE intvals(val int, color text);
+-- Test empty table
+SELECT median(val) FROM intvals;
+ median 
+--------
+       
+(1 row)
+
+-- Integers with odd number of values
+INSERT INTO intvals VALUES
+       (1, 'a'),
+       (2, 'c'),
+       (9, 'b'),
+       (7, 'c'),
+       (2, 'd'),
+       (-3, 'd'),
+       (2, 'e');
+SELECT * FROM intvals ORDER BY val;
+ val | color 
+-----+-------
+  -3 | d
+   1 | a
+   2 | c
+   2 | e
+   2 | d
+   7 | c
+   9 | b
+(7 rows)
+
+SELECT median(val) FROM intvals;
+ median 
+--------
+      2
+(1 row)
+
+-- Integers with NULLs and even number of values
+INSERT INTO intvals VALUES
+       (99, 'a'),
+       (NULL, 'a'),
+       (NULL, 'e'),
+       (NULL, 'b'),
+       (7, 'c'),
+       (0, 'd');
+SELECT * FROM intvals ORDER BY val;
+ val | color 
+-----+-------
+  -3 | d
+   0 | d
+   1 | a
+   2 | e
+   2 | d
+   2 | c
+   7 | c
+   7 | c
+   9 | b
+  99 | a
+     | a
+     | e
+     | b
+(13 rows)
+
+SELECT median(val) FROM intvals;
+ median 
+--------
+      2
+(1 row)
+
+-- Text values
+CREATE TABLE textvals(val text, color int);
+INSERT INTO textvals VALUES
+       ('erik', 1),
+       ('mat', 3),
+       ('rob', 8),
+       ('david', 9),
+       ('lee', 2);
+SELECT * FROM textvals ORDER BY val;
+  val  | color 
+-------+-------
+ david |     9
+ erik  |     1
+ lee   |     2
+ mat   |     3
+ rob   |     8
+(5 rows)
+
+SELECT median(val) FROM textvals;
+ median 
+--------
+ lee
+(1 row)
+
+-- #AV (Negative test case) Even number of Text values
+INSERT INTO textvals VALUES
+       ('mel',10);
+SELECT * FROM textvals ORDER BY val;
+  val  | color 
+-------+-------
+ david |     9
+ erik  |     1
+ lee   |     0
+ mat   |     0
+ mel   |    10
+ rob   |     0
+(6 rows)
+
+SELECT median(val) FROM textvals;
+ERROR:  median for even number of text inputs not supported
+-- Test table with timestamps
+CREATE TABLE timestampvals (val timestamptz);
+INSERT INTO timestampvals(val)
+SELECT TIMESTAMP 'epoch' + (i * INTERVAL '1 second')
+FROM generate_series(0, 10) as T(i);
+SELECT median(val) FROM timestampvals;
+            median            
+------------------------------
+ Thu Jan 01 00:00:05 1970 PST
+(1 row)
+
+-- #AV BigInt values
+CREATE TABLE bigintvals(val bigint, color text);
+-- BigInts with odd number of values
+INSERT INTO bigintvals VALUES
+       (10000056798, 'a'),
+       (20056077823, 'c'),
+       (80123566778, 'b'),
+       (72345678889, 'c'),
+       (20056077825, 'd'),
+       (-3234455667, 'd'),
+       (20056077818, 'e');
+SELECT * FROM bigintvals ORDER BY val;
+     val     | color 
+-------------+-------
+ -3234455667 | d
+ 10000056798 | a
+ 20056077818 | e
+ 20056077823 | c
+ 20056077825 | d
+ 72345678889 | c
+ 80123566778 | b
+(7 rows)
+
+SELECT median(val) FROM bigintvals;
+   median    
+-------------
+ 20056077823
+(1 row)
+
+-- #AV BigInts with even number of values
+INSERT INTO bigintvals VALUES
+       (20056077818, 'f');
+SELECT * FROM bigintvals ORDER BY val;
+     val     | color 
+-------------+-------
+ -3234455667 | d
+ 10000056798 | a
+ 20056077818 | f
+ 20056077818 | e
+ 20056077823 | c
+ 20056077825 | d
+ 72345678889 | c
+ 80123566778 | b
+(8 rows)
+
+SELECT median(val) FROM bigintvals;
+   median    
+-------------
+ 20056077821
+(1 row)
+
