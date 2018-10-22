@@ -214,6 +214,7 @@ Datum median_transfn( PG_FUNCTION_ARGS) {
 		state = (State*) VARDATA(pg_state);
 		state->length = 1;
 		state->values[0] = element;
+		state->maxed = false;
 	} else {
 		state = (State*) VARDATA(pg_state);
 		/* Add the new datum node to the list*/
@@ -293,7 +294,6 @@ Datum median_finalfn( PG_FUNCTION_ARGS) {
 		median2 = get_k_smallest(state->values, 0, state->length -1, mid, cmp);
 		ret = get_mean(element_type, ret, median2);
 	}
-
 
 	PG_RETURN_DATUM(ret);
 }

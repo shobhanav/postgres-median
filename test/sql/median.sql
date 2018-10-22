@@ -52,7 +52,7 @@ CREATE TABLE timestampvals (val timestamptz);
 
 INSERT INTO timestampvals(val)
 SELECT TIMESTAMP 'epoch' + (i * INTERVAL '1 second')
-FROM generate_series(0, 10) as T(i);
+FROM generate_series(0, 100000) as T(i);
 
 SELECT median(val) FROM timestampvals;
 
