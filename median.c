@@ -3,8 +3,8 @@
 #include <utils/lsyscache.h>
 #include <utils/timestamp.h>
 #include <catalog/pg_type.h>
-#include <string.h>
 #include "utils/datum.h"
+#include "datum_comparator.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -20,118 +20,7 @@ typedef struct state {
 PG_FUNCTION_INFO_V1( median_transfn);
 PG_FUNCTION_INFO_V1( median_finalfn);
 
-static int cmp_dimension_id_int16(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
 
-	int16 vall = DatumGetInt16(datuml);
-	int16 valr = DatumGetInt16(datumr);
-
-	if (vall < valr)
-		return -1;
-
-	if (vall > valr)
-		return 1;
-
-	return 0;
-}
-
-static int cmp_dimension_id_int32(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
-
-	int32 vall = DatumGetInt32(datuml);
-	int32 valr = DatumGetInt32(datumr);
-
-	if (vall < valr)
-		return -1;
-
-	if (vall > valr)
-		return 1;
-
-	return 0;
-}
-
-static int cmp_dimension_id_int64(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
-
-	int64 vall = DatumGetInt64(datuml);
-	int64 valr = DatumGetInt64(datumr);
-
-	if (vall < valr)
-		return -1;
-
-	if (vall > valr)
-		return 1;
-
-	return 0;
-}
-
-static int cmp_dimension_id_float4(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
-
-	float4 vall = DatumGetFloat4(datuml);
-	float4 valr = DatumGetFloat4(datumr);
-
-	if (vall < valr)
-		return -1;
-
-	if (vall > valr)
-		return 1;
-
-	return 0;
-}
-
-static int cmp_dimension_id_float8(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
-
-	float8 vall = DatumGetFloat8(datuml);
-	float8 valr = DatumGetFloat8(datumr);
-
-	if (vall < valr)
-		return -1;
-
-	if (vall > valr)
-		return 1;
-
-	return 0;
-}
-
-static int cmp_dimension_id_timestamptzcmp(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
-
-	TimestampTz ts1 = DatumGetTimestampTz(datuml);
-	TimestampTz ts2 = DatumGetTimestampTz(datumr);
-
-	if (ts1 < ts2)
-		return -1;
-
-	if (ts1 > ts2)
-		return 1;
-
-	return 0;
-}
-
-static int cmp_dimension_id_varchar(const void *left, const void *right) {
-	const Datum datuml = *(Datum *) left;
-	const Datum datumr = *(Datum *) right;
-
-	bytea *vall = (bytea *) DatumGetPointer(datuml);
-	bytea *valr = (bytea *) DatumGetPointer(datumr);
-
-	char *str1 = VARDATA_ANY(vall);
-	char *str2 = VARDATA_ANY(valr);
-
-	/*Null terminate C strings*/
-	str1[VARSIZE_ANY_EXHDR(vall)] = '\0';
-	str2[VARSIZE_ANY_EXHDR(valr)] = '\0';
-
-	return strcmp(str1, str2);
-}
 
 static comparison_fn_t get_compare_function(Oid oid) {
 
@@ -154,7 +43,7 @@ static comparison_fn_t get_compare_function(Oid oid) {
 		cmp = cmp_dimension_id_float8;
 		break;
 	case TIMESTAMPTZOID:
-		cmp = cmp_dimension_id_timestamptzcmp;
+		cmp = cmp_dimension_id_timestamptz;
 		break;
 	case TEXTOID:
 		cmp = cmp_dimension_id_varchar;
@@ -211,6 +100,67 @@ static Datum get_mean(Oid oid, Datum val1, Datum val2) {
 
 	return res;
 }
+
+static void swap(Datum *arr, int i, int j) {
+
+	Datum temp;
+	temp = arr[i];
+	arr[i] = arr[j];
+	arr[j] = temp;
+}
+
+/*
+ * Performs quick sort partitioning. Treats rightmost element as the pivot and returns
+ * its index in a sorted array.
+ */
+
+static int partition(Datum *arr, int l, int r, comparison_fn_t cmp)
+{
+    int i;
+    i = l;
+    for (int j = l; j <= r - 1; j++) {
+
+        if (cmp(&arr[j],&arr[r]) <= 0) {
+            swap(arr, i, j);
+            i++;
+        }
+    }
+    swap(arr, i, r);
+    return i;
+}
+
+/**
+ * Implements 'quickselect' algorithm.
+ * Returns the kth smallest element in the given array with average O(n) time complexity.
+ */
+
+static Datum get_k_smallest(Datum *arr, int l, int r, int k, comparison_fn_t cmp)
+{
+	int index;
+
+    if (k > 0 && k <= r - l + 1) {
+
+        index = partition(arr, l, r, cmp);
+
+
+        // If kth position, return element
+        if (index - l == k - 1){
+        	return arr[index];
+        }
+
+        // If position is more, look in the left partition
+        if (index - l > k - 1){
+            return get_k_smallest(arr, l, index - 1, k, cmp);
+
+        }
+        // Else look in the right partition
+        return get_k_smallest(arr, index + 1, r, k - index + l - 1, cmp);
+    }
+
+    //k should not be less than zero or greater the array size
+    return (Datum)0;
+}
+
 /*
  * Median state transfer function.
  *
@@ -301,15 +251,19 @@ Datum median_finalfn( PG_FUNCTION_ARGS) {
 	/* find compare function for the input data type */
 	cmp = get_compare_function(element_type);
 
-	qsort(state->values, state->length, sizeof(Datum), cmp);
-
 	mid = state->length / 2;
 
-	if (state->length % 2 != 0)
-		ret = state->values[mid];
-	else
-		ret = get_mean(element_type, state->values[mid],
-				state->values[mid - 1]);
+	/*get the kth smallest element without actually sorting the array*/
+	ret = get_k_smallest(state->values, 0, state->length -1, mid+1, cmp);
+	if(state->length % 2 != 0){
+		//odd entries,return the median
+	} else{
+		Datum median2;
+		//get (mid-1)th smallest element
+		median2 = get_k_smallest(state->values, 0, state->length -1, mid, cmp);
+		ret = get_mean(element_type, ret, median2);
+	}
+
 
 	PG_RETURN_DATUM(ret);
 }

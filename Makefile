@@ -11,7 +11,7 @@ REGRESS_OPTS := \
 	--inputdir=test \
 	--outputdir=test \
 
-SRCS = median.c
+SRCS = median.c datum_comparator.c
 OBJS = $(patsubst %.c,%.o,$(SRCS))
 
 PG_CONFIG = pg_config
