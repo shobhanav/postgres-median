@@ -1,8 +1,6 @@
 #ifndef DATUM_COMPARATOR_H_
 #define DATUM_COMPARATOR_H_
 
-#include "utils/datum.h"
-
 int cmp_dimension_id_int16(const void *left, const void *right);
 int cmp_dimension_id_int32(const void *left, const void *right);
 int cmp_dimension_id_int64(const void *left, const void *right);

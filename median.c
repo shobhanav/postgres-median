@@ -1,27 +1,43 @@
 #include <postgres.h>
 #include <fmgr.h>
-#include <utils/lsyscache.h>
 #include <utils/timestamp.h>
 #include <catalog/pg_type.h>
-#include "utils/datum.h"
 #include "datum_comparator.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
 
-#define MAX_LEN 200
+#define WINDOW_LEN 1000
+
+/* aggregate median:
+ *	 median(state, anyelement) returns the median element of the given list of unsorted row values
+ *
+ * Usage:
+ *   SELECT median(col_name) FROM table
+ *
+ *
+ * Description:
+ * Median returns the median value of the specified list of row values. The supported data types
+ * are : smallint (int2), integer (int4), bigint (int8), real(float4), double precision (float8),
+ * varchar (only on odd number of rows), and timestamp with timezone.
+ *
+ * The macro WINDOW_LEN defines the maximum number of rows on which median calculation is performed.
+ * If the number of input rows is greater than WINDOW_LEN, median calculation is done only on the
+ * last WINDOW_LEN row values.
+ */
 
 typedef struct state {
 	int length;
-	Datum values[MAX_LEN];
+	Datum values[WINDOW_LEN];
+	bool maxed;
 } State;
 
 PG_FUNCTION_INFO_V1( median_transfn);
 PG_FUNCTION_INFO_V1( median_finalfn);
 
 
-
+/* Returns the respective compare function for the given data type. */
 static comparison_fn_t get_compare_function(Oid oid) {
 
 	comparison_fn_t cmp;
@@ -54,6 +70,7 @@ static comparison_fn_t get_compare_function(Oid oid) {
 	return cmp;
 }
 
+/* Calculates and returns the mean of two datum values. */
 static Datum get_mean(Oid oid, Datum val1, Datum val2) {
 	Datum res;
 	switch (oid) {
@@ -131,7 +148,8 @@ static int partition(Datum *arr, int l, int r, comparison_fn_t cmp)
 
 /**
  * Implements 'quickselect' algorithm.
- * Returns the kth smallest element in the given array with average O(n) time complexity.
+ * Returns the kth smallest element in the given array with average case O(n) time complexity.
+ * In comparison, quicksort's average case complexity is O(nlogn).
  */
 
 static Datum get_k_smallest(Datum *arr, int l, int r, int k, comparison_fn_t cmp)
@@ -201,6 +219,12 @@ Datum median_transfn( PG_FUNCTION_ARGS) {
 		/* Add the new datum node to the list*/
 		state->values[state->length] = element;
 		state->length += 1;
+		if(state->length == WINDOW_LEN){
+			state->maxed = true;
+			/*roll over, start over-writing oldest elements in the window array*/
+			state->length = 0;
+		}
+
 	}
 	PG_RETURN_BYTEA_P(pg_state);
 }
@@ -239,6 +263,12 @@ Datum median_finalfn( PG_FUNCTION_ARGS) {
 	}
 
 	state = (State*) VARDATA(pg_state);
+
+	/* if there were more rows than WINDOW_LEN, then perform median
+	 * on all WINDOW_LEN elements*/
+	if(state->maxed)
+		state->length = WINDOW_LEN;
+
 	/*return null if no elements in the list*/
 	if (state->length == 0)
 		PG_RETURN_NULL();
